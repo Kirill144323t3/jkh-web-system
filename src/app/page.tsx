@@ -6,9 +6,12 @@ import { createUser, createDepartment, deleteUser, deleteDepartment, updateUser,
 import { LayoutDashboard, Users, Shield, Building2, FileText, Plus, X, Trash2, UserX, ChevronRight, CheckCircle2, CalendarDays, Paperclip, Briefcase, ScrollText, Database, Download, Key, Check } from 'lucide-react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 
-export default async function AdminDashboardPage({ searchParams }: { 
+export default async function AdminDashboardPage(props: { 
   searchParams: Promise<{ [key: string]: string | string[] | undefined }> 
 }) {
+  const params = await props.searchParams;
+  const section = (params.section as string) || 'overview';
+
   const cookieStore = await cookies();
   const userIdStr = cookieStore.get('userId')?.value;
   const roleId = cookieStore.get('roleId')?.value;
@@ -17,15 +20,13 @@ export default async function AdminDashboardPage({ searchParams }: {
   if (roleId !== '1') redirect('/dashboard');
 
   const userId = parseInt(userIdStr);
-  const params = await searchParams;
-  const section = params.section || 'overview';
+  
   const isAdding = params.add === 'true';
   const isAddingDoc = params.addDoc === 'true';
   const editUserIdStr = params.edit as string;
   const isEditing = !!editUserIdStr;
   const statusParam = params.status as string | undefined;
-  const activeStatus =
-    statusParam && ['1', '2', '3', '4'].includes(statusParam) ? statusParam : 'all';
+  const activeStatus = statusParam && ['1', '2', '3', '4'].includes(statusParam) ? statusParam : 'all';
   const searchQueryRaw = params.q as string | undefined;
   const searchQuery = searchQueryRaw ? searchQueryRaw.toString().trim().toLowerCase() : '';
 
@@ -35,7 +36,7 @@ export default async function AdminDashboardPage({ searchParams }: {
       role: true, 
       department: true, 
       registration: true,
-      passwordResets: {           // <-- ВОТ ТУТ ИЗМЕНИЛИ
+      passwordResets: {           
         where: { status: 'PENDING' }
       }
     }, 
@@ -98,6 +99,7 @@ export default async function AdminDashboardPage({ searchParams }: {
                 {section === 'documents' && 'Документы'}
                 {section === 'audit' && 'Журнал аудита'}
                 {section === 'backup' && 'Резервное копирование'}
+                {section === 'resets' && 'Запросы паролей'}
               </h2>
               <p className="text-sm sm:text-base text-gray-600 mt-1">
                 {section === 'overview' && 'Обзор документооборота ЖКХ'}
@@ -106,6 +108,7 @@ export default async function AdminDashboardPage({ searchParams }: {
                 {section === 'documents' && 'Управление документами и поручениями'}
                 {section === 'audit' && 'История действий пользователей в системе'}
                 {section === 'backup' && 'Экспорт данных системы в безопасный формат'}
+                {section === 'resets' && 'Запросы на восстановление паролей'}
               </p>
             </div>
             <div className="flex gap-3 self-start sm:self-auto">
