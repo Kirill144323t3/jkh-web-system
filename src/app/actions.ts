@@ -1,6 +1,5 @@
 'use server'
 
-import { put } from '@vercel/blob';
 import { prisma } from '@/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
@@ -105,7 +104,10 @@ export async function deleteUser(formData: FormData) {
 }
 
 export async function toggleBlockUser(formData: FormData) {
-  const userId = parseInt(formData.get('userId') as string);
+  // Исправили получение ID, чтобы работало с кнопками из page.tsx
+  const idStr = formData.get('id') || formData.get('userId');
+  const userId = parseInt(idStr as string);
+  
   const reg = await prisma.registration.findUnique({ where: { userId } });
   if (reg) {
     await prisma.registration.update({
@@ -132,37 +134,51 @@ export async function deleteDepartment(formData: FormData) {
   revalidatePath('/');
 }
 
-// === ДОКУМЕНТЫ (ПОД ТВОЮ СХЕМУ) ===
+// === ДОКУМЕНТЫ (С ИСПРАВЛЕННОЙ ЗАГРУЗКОЙ ФАЙЛОВ) ===
 export async function createDocument(formData: FormData) {
   try {
     const cookieStore = await cookies();
     const authorId = parseInt(cookieStore.get('userId')?.value || '1');
+    
+    // Получаем все данные из формы
     const title = formData.get('title') as string;
-    const file = formData.get('file') as File | null;
+    const taskDescription = formData.get('taskDescription') as string;
+    const priority = formData.get('priority') as string || 'medium';
+    const deadlineStr = formData.get('deadline') as string;
     const assignedToRaw = formData.get('assignedTo');
     const assignedTo = assignedToRaw ? parseInt(assignedToRaw as string) : null;
+    
+    const file = formData.get('file') as File | null;
 
-    let fileUrl = null;
-    let originalName = null;
+    let fileData = null;
+    let fileName = null;
+    let fileType = null;
 
+    // Переводим файл в Base64 для сохранения в БД
     if (file && file.size > 0) {
-      originalName = file.name;
-      try {
-        const blob = await put(originalName, file, { access: 'public' });
-        fileUrl = blob.url;
-      } catch (err) { console.error(err); }
+      fileName = file.name;
+      fileType = file.type || 'application/octet-stream';
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      fileData = `data:${fileType};base64,${buffer.toString('base64')}`;
     }
 
     await prisma.document.create({
       data: { 
         title, 
+        taskDescription,
+        priority,
+        deadline: deadlineStr ? new Date(deadlineStr) : null,
         userId: authorId, 
-        statusId: 1,
-        fileName: originalName,
-        fileData: fileUrl,
-        assignedTo: assignedTo 
+        statusId: 1, // Статус: Новое
+        fileName,
+        fileType,
+        fileData,
+        assignedTo 
       }
     });
+
+    await logAction(authorId, 'Создание документа', `Создан документ: ${title} ${fileName ? '(с файлом)' : ''}`);
     revalidatePath('/');
   } catch (e) { console.error(e); }
   redirect('/?section=documents');
@@ -205,17 +221,19 @@ export async function requestPasswordReset(formData: FormData) {
 }
 
 export async function resolvePasswordReset(formData: FormData) {
-  const id = parseInt(formData.get('id') as string);
-  const action = formData.get('action') as string;
-  if (action === 'APPROVE') {
-    const request = await prisma.passwordResetRequest.findUnique({ where: { id } });
-    if (request) {
-      await prisma.registration.update({
-        where: { login: request.login },
-        data: { password: '123' }
-      });
-    }
+  // Исправили получение ID запроса
+  const idStr = formData.get('requestId') || formData.get('id');
+  const id = parseInt(idStr as string);
+  
+  const request = await prisma.passwordResetRequest.findUnique({ where: { id } });
+  if (request) {
+    // Сбрасываем пароль на стандартный "123"
+    await prisma.registration.update({
+      where: { login: request.login },
+      data: { password: '123' }
+    });
+    // Удаляем запрос
+    await prisma.passwordResetRequest.delete({ where: { id } });
   }
-  await prisma.passwordResetRequest.delete({ where: { id } });
   revalidatePath('/');
 }
